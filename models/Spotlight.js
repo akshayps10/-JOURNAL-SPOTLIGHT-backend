@@ -3,8 +3,9 @@ const mongoose = require("mongoose");
 
 const ArticleSchema = new mongoose.Schema({
   title: String,
-  description: String,
-  image: String, 
+  description: String, 
+  imageData: Buffer,
+  imageType: String,
   createdAt: { type: Date, default: Date.now },
 });
 

@@ -5,8 +5,8 @@ const { authenticateToken } = require("./middleware/middleware");
 const SpotlightModel = require("./models/Spotlight");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+// const path = require("path");
+// const fs = require("fs");
 
 const app = express();
 
@@ -14,7 +14,8 @@ const app = express();
 require("dotenv").config();
 
 const JWT_SECRET = "key123";
-
+const fs = require("fs");
+const path = require("path");
 
 app.use(express.json());
 app.use(cors());
@@ -113,14 +114,29 @@ app.post("/add-article", authenticateToken, upload.single("image"), async (req, 
     const user = await SpotlightModel.findById(req.user.id);
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    let imageData = null;
+    let imageType = null;
+
+    if (req.file) {
+      const filePath = path.join(__dirname, req.file.path);
+      imageData = fs.readFileSync(filePath);
+      imageType = req.file.mimetype;
+    }
+
     const newArticle = {
       title,
       description,
-      image: req.file ? `/uploads/${req.file.filename}` : null,
+      imageData,
+      imageType,
     };
 
     user.articles.push(newArticle);
     await user.save();
+
+    // Optionally delete the file after saving its data
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
 
     res.status(201).json({ message: "Article added successfully", article: newArticle });
   } catch (err) {
@@ -143,10 +159,10 @@ app.delete("/delete-article/:articleId", authenticateToken, async (req, res) => 
     }
 
    
-    if (article.image) {
-      const imagePath = path.join(__dirname, article.image);
-      fs.unlinkSync(imagePath); 
-    }
+    // if (article.image) {
+    //   const imagePath = path.join(__dirname, article.image);
+    //   fs.unlinkSync(imagePath); 
+    // }
 
     user.articles.pull(articleId);
     await user.save();
@@ -174,28 +190,30 @@ app.put("/update-article/:articleId", authenticateToken, upload.single("image"),
     const article = user.articles.id(articleId); 
     if (!article) return res.status(404).json({ message: "Article not found" });
 
+    let imageData = null;
+    let imageType = null;
     
     if (req.file) {
-      const oldImagePath = path.join(__dirname, 'uploads', article.image.split('/').pop());
-      try {
-        fs.unlinkSync(oldImagePath);
-      } catch (error) {
-        console.error("Error deleting old image:", error.message);
-      }
-
-      
-      article.image = `/uploads/${req.file.filename}`;
+      const filePath = path.join(__dirname, req.file.path);
+      imageData = fs.readFileSync(filePath);
+      imageType = req.file.mimetype;
     }
 
     
     article.title = title;
     article.description = description;
+    article.imageData =imageData;
+    article.imageType = imageType;
 
     await user.save();
 
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+
     res.status(200).json({ message: "Article updated successfully", article });
   } catch (err) {
-    handleError(res, err);
+    // handleError(res, err);
   }
 });
 
@@ -216,6 +234,27 @@ app.get("/articles", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+app.get("/articles/:id/image", async (req, res) => {
+  try {
+    const user = await SpotlightModel.findOne({ "articles._id": req.params.id });
+    if (!user) return res.status(404).json({ message: "Article not found" });
+
+    const article = user.articles.id(req.params.id);
+    if (!article.imageData || !article.imageType) {
+      return res.status(404).json({ message: "Image not available" });
+    }
+
+    res.set("Content-Type", article.imageType); // Set the correct MIME type
+    res.send(article.imageData); // Send the binary image data
+  } catch (err) {
+    console.error("Error fetching image:", err.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
+
 
 
 const PORT = 3001;
